@@ -105,8 +105,11 @@ server.registerTool(
     while (attempts < maxAttempts) {
       attempts++
       const wallet = Wallet.createRandom()
-      console.log(`Attempt ${attempts}: Generated address ${wallet.address}`)
-      // address is "0x..." — check after "0x"
+
+      if (attempts % 100 === 0) {
+        console.error(`[vanity_address] Attempt ${attempts} - Address: ${wallet.address}`)
+      }
+
       if (wallet.address.toLowerCase().slice(2).startsWith(target)) {
         return {
           content: [

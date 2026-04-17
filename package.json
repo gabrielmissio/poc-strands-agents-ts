@@ -5,8 +5,7 @@
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit",
-    "start": "dotenvx run -f .env -- node dist/index.js",
-    "dev": "dotenvx run -f .env -- tsx src/index.ts"
+    "start": "npm run build && dotenvx run -f .env -- node dist/index.js"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-agentcore": "latest",
