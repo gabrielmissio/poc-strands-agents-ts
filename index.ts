@@ -1,8 +1,10 @@
 import { z } from 'zod'
 import * as strands from '@strands-agents/sdk'
+import { JsonRpcProvider, formatEther } from 'ethers'
 import express, { type Request, type Response } from 'express'
 
 const PORT = process.env.PORT || 8080
+const evmRpcProvider = new JsonRpcProvider(process.env.EVM_RPC_URL)
 
 // Define a custom tool
 const calculatorTool = strands.tool({
@@ -38,14 +40,26 @@ const letterCounterTool = strands.tool({
   },
 })
 
+const evmBalanceTool = strands.tool({
+  name: 'evmBalance',
+  description: 'Fetches the Ether balance of a given Ethereum address',
+  inputSchema: z.object({
+    address: z.string(),
+  }),
+  callback: async (input): Promise<string> => {
+    const balance = await evmRpcProvider.getBalance(input.address)
+    return formatEther(balance) + ' ETH'
+  },
+})
+
 // Configure the agent with Amazon Bedrock
 const agent = new strands.Agent({
-  systemPrompt: `speak like a pirate`,
+  systemPrompt: `speak like a caveman`,
   model: new strands.BedrockModel({
-    region: 'us-east-1', // Change to your preferred region
-    modelId: 'global.anthropic.claude-sonnet-4-20250514-v1:0', // Change to your preferred Bedrock model
+    region: process.env.AWS_REGION || 'us-east-1',
+    modelId: process.env.BEDROCK_MODEL_ID || 'global.anthropic.claude-sonnet-4-6',
   }),
-  tools: [calculatorTool, letterCounterTool],
+  tools: [calculatorTool, letterCounterTool, evmBalanceTool],
 })
 
 const app = express()
