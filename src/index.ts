@@ -17,7 +17,7 @@ const PORT = process.env.PORT || 8080
 const cryptoToolsMcp = new strands.McpClient({
   transport: new StdioClientTransport({
     command: 'node',
-    args: [resolve(__dirname, 'mcp-server.js')],
+    args: [resolve(__dirname, './mcp-servers/stdio-mcp-server.js')],
   }),
 })
 
