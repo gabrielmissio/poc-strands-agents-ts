@@ -4,6 +4,7 @@ import { createMcpExpressApp } from '@modelcontextprotocol/sdk/server/express.js
 import { z } from 'zod/v3'
 
 const MCP_PORT = process.env.HTTP_MCP_PORT || 8081
+const MCP_HOST = process.env.HTTP_MCP_HOST || '0.0.0.0'
 const COINGECKO_API = 'https://api.coingecko.com/api/v3'
 
 function log(tag: string, ...args: unknown[]) {
@@ -183,8 +184,11 @@ function createServer() {
 }
 
 // --- Streamable HTTP transport ---
+const MCP_ALLOWED_HOSTS = process.env.HTTP_MCP_ALLOWED_HOSTS
+  ? process.env.HTTP_MCP_ALLOWED_HOSTS.split(',')
+  : ['localhost', '127.0.0.1', 'host.docker.internal']
 
-const app = createMcpExpressApp()
+const app = createMcpExpressApp({ host: MCP_HOST, allowedHosts: MCP_ALLOWED_HOSTS })
 
 app.post('/mcp', async (req, res) => {
   log('http', `POST /mcp from ${req.ip}`)
@@ -231,8 +235,8 @@ app.delete('/mcp', (_req, res) => {
   }))
 })
 
-app.listen(MCP_PORT, () => {
-  console.log(`💰 Coin Price MCP server (Streamable HTTP) on http://localhost:${MCP_PORT}/mcp`)
+app.listen(Number(MCP_PORT), MCP_HOST, () => {
+  console.log(`💰 Coin Price MCP server (Streamable HTTP) on http://${MCP_HOST}:${MCP_PORT}/mcp`)
 })
 
 process.on('SIGINT', () => {
