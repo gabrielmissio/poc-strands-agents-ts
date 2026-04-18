@@ -64,3 +64,84 @@ docker run -p 8082:8080 \
 ```bash
 curl http://localhost:8082/ping
 ```
+
+## Deploying to Amazon Bedrock AgentCore Runtime
+
+### Create IAM Role
+
+#### Make the script executable
+
+```bash
+chmod +x create-iam-role.sh
+```
+
+#### Run the script
+
+```bash
+/create-iam-role.sh
+```
+
+#### Or specify a different region
+
+```bash
+AWS_REGION=us-east-1 ./create-iam-role.sh
+```
+
+### Deploy to AWS
+
+
+#### Set Environment Variables
+
+```bash
+export ACCOUNTID=$(aws sts get-caller-identity --query Account --output text)
+
+export AWS_REGION=us-east-1
+
+// Set the IAM Role ARN
+export ROLE_ARN=$(aws iam get-role \
+  --role-name PocStrandsAgentsBedrockAgentCoreRuntimeRole \
+  --query 'Role.Arn' \
+  --output text)
+
+// New or Existing ECR repository name
+export ECR_REPO=poc-strands-agents-bedrock-agent-core-ts
+```
+
+#### Create ECR Repository
+
+```bash
+aws ecr create-repository \
+  --repository-name ${ECR_REPO} \
+  --region ${AWS_REGION}
+```
+
+#### Login to ECR
+
+```bash
+aws ecr get-login-password --region ${AWS_REGION} | \
+  docker login --username AWS --password-stdin \
+  ${ACCOUNTID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+```
+
+#### Build, Tag, and Push
+
+```bash
+docker build -t ${ECR_REPO} .
+
+docker tag ${ECR_REPO}:latest \
+  ${ACCOUNTID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}:latest
+
+docker push ${ACCOUNTID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}:latest
+```
+
+#### Create AgentCore Runtime
+
+```bash
+aws bedrock-agentcore-control create-agent-runtime \
+  --agent-runtime-name my_agent_service \
+  --agent-runtime-artifact containerConfiguration={containerUri=${ACCOUNTID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}:latest} \
+  --role-arn ${ROLE_ARN} \
+  --network-configuration networkMode=PUBLIC \
+  --protocol-configuration serverProtocol=HTTP \
+  --region ${AWS_REGION}
+```
