@@ -46,13 +46,6 @@ Resources:
             Path: /chat
             Method: post
             ResponseTransferMode: RESPONSE_STREAM
-        ChatOptions:
-          Type: Api
-          Properties:
-            RestApiId: !Ref ChatApi
-            Path: /chat
-            Method: options
-            ResponseTransferMode: RESPONSE_STREAM
 
 Parameters:
   AgentRuntimeArn:
