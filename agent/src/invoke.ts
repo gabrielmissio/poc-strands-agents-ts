@@ -8,8 +8,7 @@ const region = process.env.AWS_REGION || 'us-east-1'
 const authMode = (process.env.INVOKE_AUTH_MODE || 'jwt').toLowerCase() // 'jwt' | 'sigv4'
 
 if (!agentRuntimeArn) {
-  console.error('Error: AGENT_RUNTIME_ARN environment variable is not set.')
-  process.exit(1)
+  throw new Error('AGENT_RUNTIME_ARN environment variable is not set.')
 }
 
 const inputText = 'Tell me what tools/skills you have and can use to help me.'
@@ -46,7 +45,7 @@ async function invokeWithJwt(): Promise<Response> {
   const accessToken = await getCognitoAccessToken()
   console.log('✅ Got Cognito access token (SRP)')
 
-  const escapedArn = encodeURIComponent(agentRuntimeArn!)
+  const escapedArn = encodeURIComponent(agentRuntimeArn as string)
   const url = `https://bedrock-agentcore.${region}.amazonaws.com/runtimes/${escapedArn}/invocations?qualifier=DEFAULT`
 
   const response = await fetch(url, {
@@ -72,7 +71,7 @@ async function invokeWithJwt(): Promise<Response> {
 async function invokeWithSigV4(): Promise<ReadableStream<Uint8Array>> {
   const client = new BedrockAgentCoreClient({ region })
   const command = new InvokeAgentRuntimeCommand({
-    agentRuntimeArn: agentRuntimeArn!,
+    agentRuntimeArn,
     qualifier: 'DEFAULT',
     runtimeSessionId: sessionId,
     payload: new TextEncoder().encode(inputText),
@@ -98,7 +97,10 @@ if (authMode === 'sigv4') {
   stream = await invokeWithSigV4()
 } else {
   const response = await invokeWithJwt()
-  stream = response.body!
+  if (!response.body) {
+    throw new Error('No response body from JWT invoke.')
+  }
+  stream = response.body
 }
 
 // ── Read SSE stream ─────────────────────────────────────────────────────
