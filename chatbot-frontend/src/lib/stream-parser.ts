@@ -1,18 +1,22 @@
 /**
- * Streaming event types emitted by AgentCore.
+ * Parses SSE streaming responses from Strands Agents SDK (via AgentCore).
  *
- * Based on the Strands SDK / Bedrock AgentCore streaming protocol:
- * - contentBlockDelta → token-by-token text
- * - contentBlockStart → tool use begin
- * - messageStop       → loop transition or end_turn
+ * Strands SDK event types (from agent.stream() → toJSON()):
+ *   modelStreamUpdateEvent  → wraps ModelStreamEvent (text deltas, tool starts, stop)
+ *   contentBlockEvent       → completed content block (text with thinking stripped)
+ *   beforeToolCallEvent     → tool about to execute
+ *   afterToolCallEvent      → tool finished executing
+ *   agentResultEvent        → final result
+ *
+ * Also supports legacy AgentCore native envelope (agent.invoke() JSON response).
  */
 
 export interface StreamCallbacks {
-  /** Called for each text token (token-by-token). */
+  /** Called for each visible text token (token-by-token). */
   onToken: (text: string) => void
   /** Called when a tool starts executing. */
   onToolStart: (toolName: string) => void
-  /** Called when the model begins thinking (reasoning). */
+  /** Called when the model is thinking/reasoning. */
   onThinking: (text: string) => void
   /** Called with a status label (e.g. "Using calculator", "Streaming..."). */
   onStatus: (status: string) => void
@@ -20,6 +24,84 @@ export interface StreamCallbacks {
   onComplete: () => void
   /** Called on error. */
   onError: (error: Error) => void
+}
+
+/**
+ * Strips inline `<thinking>...</thinking>` blocks from streamed text,
+ * handling tags that arrive split across multiple tokens.
+ */
+function createThinkingFilter(callbacks: StreamCallbacks) {
+  let inThinking = false
+  let tagBuffer = ''
+
+  return {
+    /** Feed a text delta token. Visible text goes to onToken, thinking to onThinking. */
+    push(text: string) {
+      tagBuffer += text
+
+      while (tagBuffer.length > 0) {
+        if (inThinking) {
+          const closeIdx = tagBuffer.indexOf('</thinking>')
+          if (closeIdx !== -1) {
+            // Emit everything before the close tag as thinking
+            const thinkingText = tagBuffer.substring(0, closeIdx)
+            if (thinkingText) callbacks.onThinking(thinkingText)
+            tagBuffer = tagBuffer.substring(closeIdx + '</thinking>'.length)
+            inThinking = false
+            callbacks.onStatus('Streaming...')
+          } else {
+            // Could be a partial `</thinking>` at the end — keep buffering
+            // If buffer is long enough that it can't be a partial tag, flush as thinking
+            const maxPartial = '</thinking>'.length - 1
+            if (tagBuffer.length > maxPartial) {
+              const safe = tagBuffer.substring(0, tagBuffer.length - maxPartial)
+              callbacks.onThinking(safe)
+              tagBuffer = tagBuffer.substring(safe.length)
+            }
+            break
+          }
+        } else {
+          const openIdx = tagBuffer.indexOf('<thinking>')
+          if (openIdx !== -1) {
+            // Emit everything before the open tag as visible text
+            const visibleText = tagBuffer.substring(0, openIdx)
+            if (visibleText) callbacks.onToken(visibleText)
+            tagBuffer = tagBuffer.substring(openIdx + '<thinking>'.length)
+            inThinking = true
+            callbacks.onStatus('Thinking...')
+          } else {
+            // Could be a partial `<thinking>` at the end — keep buffering
+            const maxPartial = '<thinking>'.length - 1
+            const lastLt = tagBuffer.lastIndexOf('<')
+            if (lastLt !== -1 && lastLt >= tagBuffer.length - maxPartial) {
+              // Potential partial tag at the end
+              const safe = tagBuffer.substring(0, lastLt)
+              if (safe) callbacks.onToken(safe)
+              tagBuffer = tagBuffer.substring(lastLt)
+              break
+            } else {
+              // No partial tag possible — emit everything
+              callbacks.onToken(tagBuffer)
+              tagBuffer = ''
+            }
+            break
+          }
+        }
+      }
+    },
+
+    /** Flush any remaining buffered text. */
+    flush() {
+      if (tagBuffer) {
+        if (inThinking) {
+          callbacks.onThinking(tagBuffer)
+        } else {
+          callbacks.onToken(tagBuffer)
+        }
+        tagBuffer = ''
+      }
+    },
+  }
 }
 
 /**
@@ -37,7 +119,8 @@ export async function parseAgentCoreStream(
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
-  let isInThinking = false
+  let completed = false
+  const thinkingFilter = createThinkingFilter(callbacks)
 
   try {
     while (true) {
@@ -60,10 +143,6 @@ export async function parseAgentCoreStream(
 
         if (jsonString === '[DONE]') continue
 
-        // Skip noise lines (Python repr, control events)
-        if (jsonString.startsWith("\"{'") || jsonString.startsWith("{'")) continue
-        if (jsonString.includes('"init_event_loop"') || jsonString.includes('"start": true')) continue
-
         let chunk: Record<string, unknown>
         try {
           chunk = JSON.parse(jsonString)
@@ -71,50 +150,75 @@ export async function parseAgentCoreStream(
           continue
         }
 
-        // --- AgentCore JSON envelope (non-streaming agent.invoke() response) ---
+        const eventType = chunk.type as string | undefined
+
+        // ── Legacy: non-streaming JSON envelope (agent.invoke() response) ──
         const agentResponse = chunk.response as Record<string, unknown> | undefined
         if (agentResponse?.type === 'agentResult') {
           const lastMessage = agentResponse.lastMessage as Record<string, unknown> | undefined
           const content = lastMessage?.content as Array<Record<string, string>> | undefined
           if (content) {
             for (const block of content) {
-              if (block.text) {
-                callbacks.onToken(block.text)
-              }
+              if (block.text) thinkingFilter.push(block.text)
             }
           }
+          thinkingFilter.flush()
+          completed = true
           callbacks.onComplete()
           continue
         }
 
-        // --- Text streaming (token by token) ---
-        const delta = (chunk.event as Record<string, unknown>)?.contentBlockDelta as Record<string, unknown> | undefined
-        if (delta) {
-          const text = (delta.delta as Record<string, string>)?.text
-          if (text) {
-            // Detect <thinking> tags
-            if (text.includes('<thinking') && !isInThinking) {
-              isInThinking = true
-              callbacks.onStatus('Thinking...')
-            }
+        // ── modelStreamUpdateEvent → wraps raw ModelStreamEvent ──────────
+        if (eventType === 'modelStreamUpdateEvent') {
+          const inner = chunk.event as Record<string, unknown> | undefined
+          if (!inner) continue
+          const innerType = inner.type as string | undefined
 
-            if (isInThinking) {
-              callbacks.onThinking(text)
-              if (text.includes('</thinking>')) {
-                isInThinking = false
-                callbacks.onStatus('Streaming...')
-              }
-            } else {
-              callbacks.onToken(text)
+          // Text delta
+          if (innerType === 'modelContentBlockDeltaEvent') {
+            const delta = inner.delta as Record<string, string> | undefined
+            if (delta?.type === 'textDelta' && delta.text != null) {
+              thinkingFilter.push(delta.text)
             }
+            // Extended thinking (real reasoning content, e.g. Claude)
+            if (delta?.type === 'reasoningContentDelta' && delta.text) {
+              callbacks.onThinking(delta.text)
+            }
+            continue
           }
+
+          // Tool use starting (model requesting tool call)
+          if (innerType === 'modelContentBlockStartEvent') {
+            const start = inner.start as Record<string, unknown> | undefined
+            const toolUse = start?.toolUse as Record<string, string> | undefined
+            if (toolUse?.name) {
+              callbacks.onToolStart(toolUse.name)
+              callbacks.onStatus(`Using ${toolUse.name}`)
+            }
+            continue
+          }
+
+          // Message stop
+          if (innerType === 'modelMessageStopEvent') {
+            const stopReason = inner.stopReason as string | undefined
+            if (stopReason === 'endTurn' || stopReason === 'end_turn') {
+              thinkingFilter.flush()
+              completed = true
+              callbacks.onComplete()
+            } else if (stopReason === 'toolUse' || stopReason === 'tool_use') {
+              callbacks.onStatus('Using tools...')
+            } else {
+              callbacks.onStatus('Processing...')
+            }
+            continue
+          }
+
           continue
         }
 
-        // --- Tool call starting ---
-        const blockStart = (chunk.event as Record<string, unknown>)?.contentBlockStart as Record<string, unknown> | undefined
-        if (blockStart) {
-          const toolUse = (blockStart.start as Record<string, unknown>)?.toolUse as Record<string, string> | undefined
+        // ── beforeToolCallEvent → tool about to execute ──────────────────
+        if (eventType === 'beforeToolCallEvent') {
+          const toolUse = chunk.toolUse as Record<string, string> | undefined
           if (toolUse?.name) {
             callbacks.onToolStart(toolUse.name)
             callbacks.onStatus(`Using ${toolUse.name}`)
@@ -122,45 +226,42 @@ export async function parseAgentCoreStream(
           continue
         }
 
-        // --- Message stop (loop transition or final) ---
-        const messageStop = (chunk.event as Record<string, unknown>)?.messageStop as Record<string, string> | undefined
-        if (messageStop) {
-          if (messageStop.stopReason === 'end_turn') {
-            callbacks.onComplete()
-          } else {
-            callbacks.onStatus('Processing...')
-          }
+        // ── afterToolCallEvent → tool finished ───────────────────────────
+        if (eventType === 'afterToolCallEvent') {
+          callbacks.onStatus('Processing result...')
           continue
         }
 
-        // --- Tool stream event (subagent streaming) ---
-        if (chunk.tool_stream_event) {
-          const toolEvent = chunk.tool_stream_event as Record<string, unknown>
-          const toolUseInfo = toolEvent.tool_use as Record<string, string> | undefined
-          const streamData = toolEvent.data as Record<string, unknown> | undefined
+        // ── agentResultEvent → final result ──────────────────────────────
+        if (eventType === 'agentResultEvent') {
+          thinkingFilter.flush()
+          completed = true
+          callbacks.onComplete()
+          continue
+        }
 
-          if (toolUseInfo?.name) {
-            callbacks.onStatus(`${toolUseInfo.name}: working...`)
-          }
-
-          if (streamData?.data && typeof streamData.data === 'string') {
-            callbacks.onToken(streamData.data)
-          }
-
-          if (streamData?.result) {
-            callbacks.onStatus('Processing result...')
-          }
+        // ── Skip lifecycle noise events ──────────────────────────────────
+        if (
+          eventType === 'beforeInvocationEvent' ||
+          eventType === 'afterInvocationEvent' ||
+          eventType === 'beforeModelCallEvent' ||
+          eventType === 'afterModelCallEvent' ||
+          eventType === 'beforeToolsEvent' ||
+          eventType === 'afterToolsEvent' ||
+          eventType === 'messageAddedEvent' ||
+          eventType === 'contentBlockEvent' ||
+          eventType === 'modelMessageEvent' ||
+          eventType === 'toolResultEvent'
+        ) {
           continue
         }
       }
     }
 
-    // Process any remaining data left in the buffer (e.g. single JSON response with no trailing newline)
+    // Flush remaining buffer
     if (buffer.trim()) {
       let jsonString = buffer.trim()
-      if (jsonString.startsWith('data: ')) {
-        jsonString = jsonString.substring(6)
-      }
+      if (jsonString.startsWith('data: ')) jsonString = jsonString.substring(6)
       try {
         const chunk = JSON.parse(jsonString) as Record<string, unknown>
         const agentResponse = chunk.response as Record<string, unknown> | undefined
@@ -169,18 +270,17 @@ export async function parseAgentCoreStream(
           const content = lastMessage?.content as Array<Record<string, string>> | undefined
           if (content) {
             for (const block of content) {
-              if (block.text) {
-                callbacks.onToken(block.text)
-              }
+              if (block.text) thinkingFilter.push(block.text)
             }
           }
         }
       } catch {
-        // Not valid JSON, ignore
+        // ignore
       }
     }
 
-    callbacks.onComplete()
+    thinkingFilter.flush()
+    if (!completed) callbacks.onComplete()
   } catch (err) {
     callbacks.onError(err instanceof Error ? err : new Error(String(err)))
   } finally {

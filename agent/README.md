@@ -173,7 +173,7 @@ aws bedrock-agentcore-control create-agent-runtime \
 
 ```bash 
 # update -XXXXXXXXXX with actually value...
-export AGENT_RUNTIME_ID="poc-strands-agents-ts-XXXXXXXXXX"
+export AGENT_RUNTIME_ID="my_agent_service-9F2dcOCFkb"
 ```
 
 ```bash
