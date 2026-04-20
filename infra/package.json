@@ -5,15 +5,16 @@
   "type": "module",
   "scripts": {
     "cdk": "cdk",
-    "synth": "cdk synth",
-    "deploy": "cdk deploy --all --require-approval never",
-    "destroy": "cdk destroy --all"
+    "synth": "dotenvx run -f .env -- cdk synth",
+    "deploy": "dotenvx run -f .env -- cdk deploy --all --require-approval never",
+    "destroy": "dotenvx run -f .env -- cdk destroy --all"
   },
   "dependencies": {
     "aws-cdk-lib": "^2.250.0",
     "constructs": "^10.6.0"
   },
   "devDependencies": {
+    "@dotenvx/dotenvx": "^1.61.1",
     "@types/node": "^25.6.0",
     "aws-cdk": "^2.1118.3",
     "tsx": "^4.21.0",
