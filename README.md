@@ -19,7 +19,7 @@ This repository is intentionally structured as a demo and architectural referenc
 
 ### Option 1: Frontend calls AgentCore directly
 
-Placeholder: add architecture diagram showing browser -> Cognito -> AgentCore Runtime.
+![Direct integration architecture](media/poc-strands-agents-bedrock-agentcore-direct-light.png)
 
 Current behavior:
 
@@ -29,7 +29,7 @@ Current behavior:
 
 ### Option 2: Frontend calls BFF, which calls AgentCore
 
-Placeholder: add architecture diagram showing browser -> Cognito -> API Gateway/Lambda BFF -> AgentCore Runtime.
+![BFF integration architecture](media/poc-strands-agents-bedrock-agentcore-bff-light.png)
 
 Current behavior:
 
