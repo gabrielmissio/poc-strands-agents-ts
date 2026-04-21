@@ -3,8 +3,13 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
+    "bootstrap": "npm ci --ignore-scripts && npm --prefix ./agent ci && npm --prefix ./chatbot-bff ci && npm --prefix ./chatbot-frontend ci && npm --prefix ./infra ci",
     "lint": "eslint .",
-    "lint:fix": "eslint . --fix"
+    "lint:fix": "eslint . --fix",
+    "synth": "npm --prefix ./infra run synth",
+    "deploy": "npm --prefix ./infra run deploy",
+    "destroy": "npm --prefix ./infra run destroy",
+    "docker:setup-arm64": "npm --prefix ./infra run docker:setup-arm64"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

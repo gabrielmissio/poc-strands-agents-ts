@@ -40,8 +40,7 @@ Use [infra/.env.example](.env.example) as the source of truth.
 | `AWS_REGION` | Yes | Target deployment region |
 | `PROJECT_NAME` | Yes | Prefix used for stack and resource naming |
 | `AGENT_IMAGE_PLATFORM` | No | Docker platform for the agent image build |
-| `AGENT_AUTH_MODE` | No | Agent runtime auth mode, `JWT` or `SIGV4` |
-| `FRONTEND_AGENT_MODE` | No | Frontend integration mode, `direct` or `bff` |
+| `AGENT_AUTH_MODE` | No | Agent runtime auth mode. Also derives the deployed frontend transport mode: `JWT` -> `direct`, `SIGV4` -> `bff` |
 
 Additional runtime environment variables for the agent can also be passed through this package, including model and tool configuration.
 
@@ -49,4 +48,5 @@ Additional runtime environment variables for the agent can also be passed throug
 
 - The frontend and BFF are built before synth or deploy through package scripts
 - The agent image defaults to `linux/arm64`
+- The deployed frontend transport is derived from `AGENT_AUTH_MODE`; there is no separate infra-level frontend mode switch
 - If Docker cannot build the ARM64 image locally, use the troubleshooting guidance in the root [README.md](../README.md#troubleshooting)

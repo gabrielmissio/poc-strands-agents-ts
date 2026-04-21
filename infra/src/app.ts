@@ -8,7 +8,7 @@ import { FrontendStack } from './stacks/frontend-stack.js'
 
 const app = new cdk.App()
 
-const projectName = app.node.tryGetContext('projectName') ??  process.env.PROJECT_NAME ?? 'web3-caveman'
+const projectName = app.node.tryGetContext('projectName') ??  process.env.PROJECT_NAME ?? 'demo-strands-agents-ts'
 
 function resolveAgentAuthMode(input?: string): AgentAuthMode {
   const normalized = input?.trim().toLowerCase()
@@ -24,22 +24,8 @@ function resolveAgentAuthMode(input?: string): AgentAuthMode {
   throw new Error(`Unsupported AGENT_AUTH_MODE: ${input}`)
 }
 
-function resolveFrontendAgentMode(input: string | undefined, agentAuthMode: AgentAuthMode) {
-  const normalized = input?.trim().toLowerCase()
-
-  if (!normalized) {
-    return agentAuthMode === 'cognito' ? 'direct' as const : 'bff' as const
-  }
-
-  if (normalized !== 'direct' && normalized !== 'bff') {
-    throw new Error(`Unsupported FRONTEND_AGENT_MODE: ${input}`)
-  }
-
-  if (agentAuthMode === 'sigv4' && normalized === 'direct') {
-    throw new Error('FRONTEND_AGENT_MODE=direct is not supported when AGENT_AUTH_MODE=sigv4. Use bff.')
-  }
-
-  return normalized
+function resolveFrontendAgentMode(agentAuthMode: AgentAuthMode) {
+  return agentAuthMode === 'cognito' ? 'direct' as const : 'bff' as const
 }
 
 function pickDefinedEnvironment(keys: string[]) {
@@ -77,10 +63,7 @@ const agentAuthMode = resolveAgentAuthMode(
   app.node.tryGetContext('agentAuthMode') ?? process.env.AGENT_AUTH_MODE,
 )
 
-const frontendAgentMode = resolveFrontendAgentMode(
-  app.node.tryGetContext('frontendAgentMode') ?? process.env.FRONTEND_AGENT_MODE,
-  agentAuthMode,
-)
+const frontendAgentMode = resolveFrontendAgentMode(agentAuthMode)
 
 const agentImagePlatform = resolveAgentImagePlatform(
   app.node.tryGetContext('agentImagePlatform') ?? process.env.AGENT_IMAGE_PLATFORM,

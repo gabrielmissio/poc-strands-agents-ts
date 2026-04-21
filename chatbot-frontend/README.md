@@ -2,7 +2,7 @@
 
 React + Vite chatbot UI for the demo application.
 
-This package owns the browser experience and the feature flag that switches between direct AgentCore calls and BFF-mediated calls. Repository-level architecture and deployment context live in the root [README.md](../README.md).
+This package owns the browser experience. For deployed environments, infra derives the frontend transport mode from `AGENT_AUTH_MODE`; this package still exposes `VITE_AGENT_MODE` for local standalone development. Repository-level architecture and deployment context live in the root [README.md](../README.md).
 
 ## Local setup
 
@@ -22,7 +22,7 @@ npm run dev
 
 ## Runtime modes
 
-Set `VITE_AGENT_MODE` in [chatbot-frontend/.env.example](.env.example):
+Set `VITE_AGENT_MODE` in [chatbot-frontend/.env.example](.env.example) for local development:
 
 | Mode | Behavior |
 |---|---|
@@ -51,5 +51,6 @@ Use [chatbot-frontend/.env.example](.env.example) as the source of truth.
 ## Notes
 
 - The deployed frontend receives runtime configuration through `config.js`
+- In deployed environments, `VITE_AGENT_MODE` is supplied by `infra/` based on `AGENT_AUTH_MODE`
 - The app uses Cognito through Amplify for browser authentication
 - When testing local BFF mode, point `VITE_API_URL` to the local BFF server, for example `http://localhost:3001`
