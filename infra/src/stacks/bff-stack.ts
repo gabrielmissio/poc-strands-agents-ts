@@ -10,13 +10,6 @@ export interface BffStackProps extends cdk.StackProps {
   projectName: string
   userPool: cognito.UserPool
   agentRuntimeArn: string
-  /**
-   * Auth mode forwarded to the Lambda as INVOKE_AUTH_MODE.
-   * 'jwt'    → Lambda fetches a Cognito token via SRP and calls AgentCore with Bearer
-   * 'sigv4'  → Lambda calls AgentCore using its own IAM credentials
-   * @default 'sigv4'
-   */
-  invokeAuthMode?: 'jwt' | 'sigv4'
 }
 
 export class BffStack extends cdk.Stack {
@@ -26,7 +19,7 @@ export class BffStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: BffStackProps) {
     super(scope, id, props)
 
-    const { projectName, userPool, agentRuntimeArn, invokeAuthMode = 'sigv4' } = props
+    const { projectName, userPool, agentRuntimeArn } = props
 
     // ── Lambda function ────────────────────────────────────────────────
     const fn = new lambda.Function(this, 'ChatFunction', {
@@ -42,7 +35,6 @@ export class BffStack extends cdk.Stack {
       architecture: lambda.Architecture.X86_64,
       environment: {
         ALLOWED_ORIGIN: '*',
-        INVOKE_AUTH_MODE: invokeAuthMode,
         AGENT_RUNTIME_ARN: agentRuntimeArn,
         COGNITO_USER_POOL_ID: userPool.userPoolId,
       },
@@ -58,7 +50,7 @@ export class BffStack extends cdk.Stack {
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
         actions: ['bedrock-agentcore:InvokeAgentRuntime'],
-        resources: [agentRuntimeArn],
+        resources: [agentRuntimeArn, `${agentRuntimeArn}/runtime-endpoint/*`],
       }),
     )
 

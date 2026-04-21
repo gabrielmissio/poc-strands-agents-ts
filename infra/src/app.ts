@@ -116,7 +116,6 @@ const bffStack = new BffStack(app, `${projectName}-bff`, {
   projectName,
   userPool: authStack.userPool,
   agentRuntimeArn: agentStack.runtimeArn,
-  invokeAuthMode: 'sigv4',
   env,
 })
 bffStack.addDependency(agentStack)

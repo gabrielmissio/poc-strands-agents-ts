@@ -12,7 +12,9 @@
     "predeploy": "npm run build:dependencies",
     "deploy": "dotenvx run -f .env -- cdk deploy --all --require-approval never",
     "destroy": "dotenvx run -f .env -- cdk destroy --all",
-    "deploy:agent": "dotenvx run -f .env -- cdk deploy poc-strands-agents-agent --require-approval never"
+    "deploy:agent": "dotenvx run -f .env -- cdk deploy poc-strands-agents-agent --require-approval never",
+    "predeploy:bff": "npm --prefix ../chatbot-bff run build",
+    "deploy:bff": "dotenvx run -f .env -- cdk deploy poc-strands-agents-bff --require-approval never"
   },
   "dependencies": {
     "aws-cdk-lib": "^2.250.0",
