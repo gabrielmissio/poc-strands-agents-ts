@@ -8,10 +8,11 @@ import { Construct } from 'constructs'
 export interface FrontendStackProps extends cdk.StackProps {
   projectName: string
   /**
-   * The BFF Function URL — injected into the Vite build so the SPA
+   * The BFF API base URL — injected into the runtime config so the SPA
    * knows where to POST /chat requests.
    */
   bffUrl: string
+  agentMode: 'direct' | 'bff'
   // Cognito values written into a runtime config object served from S3
   cognitoUserPoolId: string
   cognitoUserPoolClientId: string
@@ -29,6 +30,7 @@ export class FrontendStack extends cdk.Stack {
     const {
       projectName,
       bffUrl,
+      agentMode,
       cognitoUserPoolId,
       cognitoUserPoolClientId,
       cognitoIdentityPoolId,
@@ -93,8 +95,8 @@ export class FrontendStack extends cdk.Stack {
     // This is the standard pattern for injecting env vars into static SPAs
     // without baking them into the Vite bundle at build time.
     const configContent = `window.__APP_CONFIG__ = ${JSON.stringify({
-      VITE_API_URL: `${bffUrl}chat`,
-      VITE_AGENT_MODE: 'bff',
+      VITE_API_URL: bffUrl.replace(/\/$/, ''),
+      VITE_AGENT_MODE: agentMode,
       VITE_AWS_REGION: cognitoRegion,
       VITE_COGNITO_USER_POOL_ID: cognitoUserPoolId,
       VITE_COGNITO_USER_POOL_CLIENT_ID: cognitoUserPoolClientId,
